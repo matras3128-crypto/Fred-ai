@@ -1,0 +1,966 @@
+```html
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fred - AI Assistant</title>
+    <!-- Подключение Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Иконки Lucide -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Парсер Markdown (marked.js) -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <script>
+        // Конфигурация Tailwind с поддержкой переключения тем через класс .dark
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        // Цвета для темной темы
+                        chatbg: '#212121',
+                        sidebarbg: '#171717',
+                        userbubble: '#2f2f2f',
+                        botbubble: '#212121',
+                        
+                        // Цвета для светлой темы
+                        chatbgLight: '#ffffff',
+                        sidebarbgLight: '#f9f9f9',
+                        userbubbleLight: '#f0f0f0',
+                        botbubbleLight: '#ffffff',
+                        
+                        accent: '#3b82f6',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Стилизация скроллбара */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .dark ::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        .dark ::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        /* Кастомные стили для отображения Markdown контента */
+        .prose pre {
+            background-color: #0d1117;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+            margin: 0.5rem 0;
+            border: 1px solid #30363d;
+        }
+        .dark .prose pre {
+            background-color: #0d1117;
+        }
+        .prose code {
+            font-family: monospace;
+            background-color: #e2e8f0;
+            color: #0f172a;
+            padding: 0.125rem 0.25rem;
+            border-radius: 0.25rem;
+            font-size: 0.875em;
+        }
+        .dark .prose code {
+            background-color: #2d3139;
+            color: #f1f5f9;
+        }
+        .prose pre code {
+            background-color: transparent;
+            color: inherit;
+            padding: 0;
+            border-radius: 0;
+        }
+        .prose p {
+            margin-bottom: 0.75rem;
+            line-height: 1.625;
+        }
+        .prose ul, .prose ol {
+            margin-left: 1.5rem;
+            margin-bottom: 0.75rem;
+        }
+        .prose ul { list-style-type: disc; }
+        .prose ol { list-style-type: decimal; }
+    </style>
+</head>
+<body class="h-full bg-chatbgLight dark:bg-chatbg text-gray-800 dark:text-gray-200 font-sans antialiased overflow-hidden transition-colors duration-200">
+
+    <!-- Основной контейнер приложения -->
+    <div class="flex h-full w-full overflow-hidden">
+
+        <!-- Боковая панель (Sidebar) -->
+        <aside id="sidebar" class="fixed inset-y-0 left-0 z-40 flex w-72 flex-col bg-sidebarbgLight dark:bg-sidebarbg border-r border-gray-200 dark:border-gray-800 transition-transform -translate-x-full md:translate-x-0 md:static md:inset-auto">
+            
+            <!-- Шапка сайдбара -->
+            <div class="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center shadow-lg">
+                        <i data-lucide="sparkles" class="w-4 h-4 text-white"></i>
+                    </div>
+                    <span class="font-semibold text-lg text-gray-900 dark:text-white tracking-wide">Fred AI</span>
+                </div>
+                <button onclick="toggleSidebar()" class="md:hidden p-1.5 rounded-lg text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-800">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Кнопка Нового чата -->
+            <div class="p-3">
+                <button onclick="createNewChat()" class="w-full flex items-center justify-center space-x-2 py-2.5 px-4 rounded-xl border border-gray-300 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-500 bg-white dark:bg-transparent hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-800 dark:text-white font-medium transition-all duration-200 shadow-sm">
+                    <i data-lucide="plus" class="w-4 h-4"></i>
+                    <span>New Chat</span>
+                </button>
+            </div>
+
+            <!-- Список чатов из Firebase -->
+            <div class="flex-1 overflow-y-auto px-3 py-2 space-y-1" id="chats-list">
+                <!-- Анимация загрузки -->
+                <div class="animate-pulse space-y-2 p-2">
+                    <div class="h-8 bg-gray-200 dark:bg-gray-800 rounded"></div>
+                    <div class="h-8 bg-gray-200 dark:bg-gray-800 rounded"></div>
+                    <div class="h-8 bg-gray-200 dark:bg-gray-800 rounded"></div>
+                </div>
+            </div>
+
+            <!-- Настройки / Ввод API ключа Groq и Смена Темы -->
+            <div class="p-4 border-t border-gray-200 dark:border-gray-800 bg-sidebarbgLight dark:bg-sidebarbg">
+                <div class="space-y-4">
+                    <!-- Переключатель Темной/Светлой темы -->
+                    <div class="flex items-center justify-between border-b border-gray-200 dark:border-gray-800 pb-3">
+                        <span class="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400 tracking-wider">Theme Mode</span>
+                        <button onclick="toggleTheme()" class="flex items-center space-x-2 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                            <i id="theme-btn-icon" data-lucide="moon" class="w-4 h-4 text-gray-700 dark:text-gray-300"></i>
+                            <span id="theme-btn-text" class="text-xs font-medium text-gray-700 dark:text-gray-300">Dark</span>
+                        </button>
+                    </div>
+
+                    <!-- Поле для API-ключа Groq -->
+                    <div>
+                        <label class="block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400 mb-1 tracking-wider">Groq API Key</label>
+                        <div class="relative">
+                            <input type="password" id="api-key-input" placeholder="gsk_..." class="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg py-1.5 pl-3 pr-8 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600">
+                            <button onclick="toggleApiKeyVisibility()" class="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
+                                <i id="api-key-visibility-icon" data-lucide="eye" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <button onclick="saveApiKey()" class="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition-all shadow-md">
+                        Save API Key
+                    </button>
+                    
+                    <!-- ID Пользователя для синхронизации -->
+                    <div class="pt-2 flex items-center justify-between text-xs text-gray-500 border-t border-gray-200 dark:border-gray-800">
+                        <div class="flex items-center space-x-2">
+                            <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                            <span id="user-display-id">Initializing...</span>
+                        </div>
+                        <span class="font-medium text-gray-400">v1.2</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Затемнение бэкграунда для мобильного меню -->
+        <div id="sidebar-overlay" onclick="toggleSidebar()" class="fixed inset-0 z-30 bg-black/40 dark:bg-black/60 backdrop-blur-sm hidden md:hidden"></div>
+
+        <!-- Главное окно чата -->
+        <main class="flex-1 flex flex-col h-full bg-chatbgLight dark:bg-chatbg overflow-hidden relative">
+            
+            <!-- Шапка чата -->
+            <header class="h-14 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between px-4 bg-chatbgLight/80 dark:bg-chatbg/80 backdrop-blur-md sticky top-0 z-20">
+                <div class="flex items-center space-x-3">
+                    <button onclick="toggleSidebar()" class="p-1.5 rounded-lg text-gray-500 hover:text-gray-950 dark:text-gray-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 md:hidden">
+                        <i data-lucide="menu" class="w-6 h-6"></i>
+                    </button>
+                    <div>
+                        <h2 class="font-semibold text-gray-900 dark:text-white flex items-center space-x-1.5">
+                            <span id="current-chat-title">Fred Assistant</span>
+                        </h2>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">Powered by LLaMA 3.3 70B</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-center space-x-2">
+                    <button onclick="clearCurrentChatHistory()" title="Clear chat history" class="p-2 rounded-lg text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition-all">
+                        <i data-lucide="trash-2" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Всплывающие уведомления (Toast) -->
+            <div id="toast" class="fixed top-16 right-4 z-50 transform translate-y-[-100px] opacity-0 transition-all duration-300 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-900 dark:text-white px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-3 max-w-sm">
+                <div id="toast-icon-container" class="p-1 rounded-lg">
+                    <i id="toast-icon" data-lucide="info" class="w-5 h-5"></i>
+                </div>
+                <p id="toast-message" class="text-sm font-medium"></p>
+            </div>
+
+            <!-- Скролл-контейнер для сообщений -->
+            <div id="chat-messages" class="flex-1 overflow-y-auto px-4 py-6 md:px-8 space-y-6">
+                <!-- Приветственный экран (Welcome State) -->
+                <div id="welcome-container" class="flex flex-col items-center justify-center h-full max-w-xl mx-auto text-center space-y-6 py-12">
+                    <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center shadow-xl animate-bounce">
+                        <i data-lucide="sparkles" class="w-8 h-8 text-white"></i>
+                    </div>
+                    <div class="space-y-2">
+                        <h1 class="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">I'm Fred, your AI Companion</h1>
+                        <p class="text-gray-600 dark:text-gray-400 text-sm md:text-base leading-relaxed">
+                            Ask me anything! I am fully equipped with contextual memory and advanced logical understanding to help you write, code, brainstorm, and solve complex problems.
+                        </p>
+                    </div>
+
+                    <!-- Предупреждение об API ключе -->
+                    <div id="key-warning" class="w-full bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 rounded-2xl p-4 text-left flex items-start space-x-3">
+                        <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-600 dark:text-amber-500 shrink-0 mt-0.5"></i>
+                        <div>
+                            <h4 class="font-semibold text-amber-800 dark:text-amber-400 text-sm">Groq API Key Required</h4>
+                            <p class="text-xs text-amber-700 dark:text-amber-300/80 mt-1">
+                                To converse with me, please enter your Groq API key in the sidebar configuration field. You can generate one for free on your Groq Console.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Готовые подсказки (Quick Prompts) -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg mt-4">
+                        <button onclick="fillPrompt('Explain quantum computing like I am five.')" class="p-3.5 text-left rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 transition text-xs sm:text-sm">
+                            <span class="font-medium text-gray-900 dark:text-white block">💡 Explain simply</span>
+                            <span class="text-gray-500 dark:text-gray-400 mt-1 block truncate">Explain quantum computing like I'm five...</span>
+                        </button>
+                        <button onclick="fillPrompt('Write a clean JavaScript debounce function.')" class="p-3.5 text-left rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 transition text-xs sm:text-sm">
+                            <span class="font-medium text-gray-900 dark:text-white block">💻 Code assistance</span>
+                            <span class="text-gray-500 dark:text-gray-400 mt-1 block truncate">Write a clean JavaScript debounce function...</span>
+                        </button>
+                        <button onclick="fillPrompt('Help me draft an apology email to a client.')" class="p-3.5 text-left rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 transition text-xs sm:text-sm">
+                            <span class="font-medium text-gray-900 dark:text-white block">✉️ Professional Writing</span>
+                            <span class="text-gray-500 dark:text-gray-400 mt-1 block truncate">Help me draft an apology email to a client...</span>
+                        </button>
+                        <button onclick="fillPrompt('Suggest 5 creative names for a sustainable coffee brand.')" class="p-3.5 text-left rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 transition text-xs sm:text-sm">
+                            <span class="font-medium text-gray-900 dark:text-white block">🧠 Brainstorming</span>
+                            <span class="text-gray-500 dark:text-gray-400 mt-1 block truncate">Suggest names for a sustainable coffee brand...</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Контейнер для отображения пузырей сообщений -->
+                <div id="chat-bubbles-list" class="max-w-3xl mx-auto space-y-6"></div>
+            </div>
+
+            <!-- Область ввода сообщений -->
+            <div class="p-4 md:p-6 bg-chatbgLight/90 dark:bg-chatbg/90 border-t border-gray-200 dark:border-gray-800">
+                <div class="max-w-3xl mx-auto relative">
+                    
+                    <!-- Индикатор генерации ответа -->
+                    <div id="ai-writing-indicator" class="hidden absolute -top-8 left-2 flex items-center space-x-2 text-xs text-blue-600 dark:text-blue-400">
+                        <div class="flex space-x-1">
+                            <span class="w-1.5 h-1.5 bg-blue-600 dark:bg-blue-400 rounded-full animate-bounce"></span>
+                            <span class="w-1.5 h-1.5 bg-blue-600 dark:bg-blue-400 rounded-full animate-bounce" style="animation-delay: 0.2s"></span>
+                            <span class="w-1.5 h-1.5 bg-blue-600 dark:bg-blue-400 rounded-full animate-bounce" style="animation-delay: 0.4s"></span>
+                        </div>
+                        <span class="font-medium">Fred is formulating a response...</span>
+                    </div>
+
+                    <!-- Форма чата -->
+                    <form id="chat-form" onsubmit="handleSendMessage(event)" class="relative flex items-end w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-800 rounded-2xl p-2 focus-within:border-gray-400 dark:focus-within:border-gray-700 transition">
+                        <textarea id="user-input" rows="1" placeholder="Message Fred..." class="flex-1 max-h-48 resize-none bg-transparent py-3 px-3 text-sm md:text-base text-gray-900 dark:text-white focus:outline-none placeholder-gray-400 dark:placeholder-gray-500 overflow-y-auto" oninput="autoResizeTextarea(this)" onkeydown="submitOnEnter(event)"></textarea>
+                        <button type="submit" id="send-btn" class="p-2.5 bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200 rounded-xl transition duration-150 shrink-0 shadow-lg flex items-center justify-center">
+                            <i data-lucide="arrow-up" class="w-5 h-5"></i>
+                        </button>
+                    </form>
+                    
+                    <p class="text-center text-xs text-gray-400 dark:text-gray-500 mt-2">
+                        Fred can make mistakes. Verify critical details. Always protect your API key.
+                    </p>
+                </div>
+            </div>
+        </main>
+
+        <!-- Модалка переименования чата -->
+        <div id="rename-modal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+            <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-lg font-bold text-gray-900 dark:text-white flex items-center space-x-2">
+                        <i data-lucide="edit-3" class="w-5 h-5 text-blue-500"></i>
+                        <span>Rename Chat</span>
+                    </h3>
+                    <button onclick="closeRenameModal()" class="text-gray-400 hover:text-gray-900 dark:hover:text-white p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold uppercase text-gray-500 dark:text-gray-400 mb-2">New Title</label>
+                    <input type="text" id="rename-input" class="w-full bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-xl px-4 py-2.5 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+                </div>
+                <div class="flex justify-end space-x-3 pt-2">
+                    <button onclick="closeRenameModal()" class="px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl text-sm font-medium transition">
+                        Cancel
+                    </button>
+                    <button onclick="submitRenameChat()" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-medium transition shadow-md">
+                        Save changes
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Подключение Firebase модулей -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, query, onSnapshot, addDoc, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Глобальная инициализация Firebase из переданных сервером переменных
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'fred-ai-assistant';
+
+        // Системное состояние приложения
+        let user = null;
+        let chats = [];
+        let currentChatId = null;
+        let currentRenameId = null;
+
+        // Системный промпт для сохранения идентичности "Fred"
+        const SYSTEM_PROMPT = `You are Fred, a exceptionally intelligent, concise, and highly effective AI assistant. 
+Your tone is warm, professional, engaging, and crisp. 
+Under no circumstances should you mention "LLaMA", "Meta", "Groq", or any other platforms unless explicitly asked to explain technical API aspects. 
+If asked who you are, simply state you are Fred, an AI designed to assist with tasks. 
+Always output response utilizing neat Markdown formatting where appropriate (especially code snippets, bullet points, and headers).`;
+
+        // ---------------- AUTHENTICATION & INITIALIZATION ----------------
+        const initAuth = async () => {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Auth initialization failed:", error);
+                showToast("Authentication Failed! Some features might be restricted.", "error");
+            }
+        };
+
+        initAuth();
+
+        onAuthStateChanged(auth, (firebaseUser) => {
+            user = firebaseUser;
+            if (user) {
+                document.getElementById('user-display-id').textContent = `ID: ${user.uid.substring(0, 8)}...`;
+                // Начинаем слушать чаты из Firestore после авторизации
+                setupChatsSubscription();
+            } else {
+                document.getElementById('user-display-id').textContent = "Offline / Error";
+            }
+        });
+
+        // ---------------- СИНХРОНИЗАЦИЯ ЧАТОВ С FIREBASE (RULE 1, 2, 3) ----------------
+        function setupChatsSubscription() {
+            if (!user) return;
+
+            // Путь к приватным данным пользователя (Правило 1)
+            const chatsCollectionRef = collection(db, 'artifacts', appId, 'users', user.uid, 'chats');
+            
+            // В реальном времени отслеживаем изменения без сложных запросов (Правило 2)
+            onSnapshot(chatsCollectionRef, (querySnapshot) => {
+                chats = [];
+                querySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    chats.push({
+                        id: doc.id,
+                        title: data.title || "Untitled Chat",
+                        messages: data.messages || [],
+                        updatedAt: data.updatedAt || Date.now()
+                    });
+                });
+
+                // Сортировка данных в памяти браузера, чтобы обойти создание композитных индексов (Правило 2)
+                chats.sort((a, b) => b.updatedAt - a.updatedAt);
+
+                renderChatsList();
+                
+                // Устанавливаем первый чат как активный при первой загрузке
+                if (chats.length > 0 && !currentChatId) {
+                    selectChat(chats[0].id);
+                } else if (currentChatId) {
+                    renderCurrentChatMessages();
+                }
+            }, (error) => {
+                console.error("Firestore Listener error:", error);
+                showToast("Failed to fetch chats from database.", "error");
+            });
+        }
+
+        // Создание нового чата
+        window.createNewChat = async function() {
+            if (!user) return;
+            try {
+                const chatsCollectionRef = collection(db, 'artifacts', appId, 'users', user.uid, 'chats');
+                const newDocRef = await addDoc(chatsCollectionRef, {
+                    title: "New Chat Session",
+                    messages: [],
+                    updatedAt: Date.now(),
+                    createdAt: Date.now()
+                });
+                currentChatId = newDocRef.id;
+                showToast("New chat session started!", "success");
+            } catch (err) {
+                console.error("Error creating chat:", err);
+                showToast("Error starting a new chat.", "error");
+            }
+        }
+
+        // Удаление чата
+        window.deleteChat = async function(e, chatId) {
+            e.stopPropagation(); // Исключаем клик по строке чата
+            if (!user) return;
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'chats', chatId);
+                await deleteDoc(docRef);
+                showToast("Chat deleted successfully.", "info");
+
+                if (currentChatId === chatId) {
+                    currentChatId = null;
+                    document.getElementById('chat-bubbles-list').innerHTML = '';
+                    updateWelcomeStateVisibility();
+                }
+            } catch (err) {
+                console.error("Error deleting chat:", err);
+                showToast("Error deleting chat.", "error");
+            }
+        }
+
+        // Обновление заголовка чата
+        window.updateChatTitle = async function(chatId, newTitle) {
+            if (!user) return;
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'chats', chatId);
+                await updateDoc(docRef, {
+                    title: newTitle,
+                    updatedAt: Date.now()
+                });
+                showToast("Chat renamed successfully", "success");
+            } catch (err) {
+                console.error("Error renaming chat:", err);
+                showToast("Error renaming chat.", "error");
+            }
+        }
+
+        // Полная очистка сообщений чата
+        window.clearCurrentChatHistory = async function() {
+            if (!user || !currentChatId) return;
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'chats', currentChatId);
+                await updateDoc(docRef, {
+                    messages: [],
+                    updatedAt: Date.now()
+                });
+                showToast("Chat history cleared.", "info");
+            } catch (err) {
+                console.error("Error clearing chat history:", err);
+                showToast("Error clearing chat history.", "error");
+            }
+        }
+
+        // Выбор активного чата
+        window.selectChat = function(chatId) {
+            currentChatId = chatId;
+            renderChatsList();
+            renderCurrentChatMessages();
+            // Скрываем меню на мобилках после клика
+            document.getElementById('sidebar').classList.add('-translate-x-full');
+            document.getElementById('sidebar-overlay').classList.add('hidden');
+        }
+
+        // Рендеринг списка чатов в сайдбар
+        function renderChatsList() {
+            const listContainer = document.getElementById('chats-list');
+            listContainer.innerHTML = '';
+
+            if (chats.length === 0) {
+                listContainer.innerHTML = `
+                    <div class="text-center py-8 text-gray-400 dark:text-gray-500 text-sm">
+                        <i data-lucide="message-square" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+                        No chats yet.
+                    </div>
+                `;
+                lucide.createIcons();
+                return;
+            }
+
+            chats.forEach((chat) => {
+                const isActive = chat.id === currentChatId;
+                const activeClass = isActive 
+                    ? 'bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-white font-semibold' 
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-900';
+                
+                const item = document.createElement('div');
+                item.className = `group flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 cursor-pointer ${activeClass}`;
+                item.onclick = () => selectChat(chat.id);
+                
+                item.innerHTML = `
+                    <div class="flex items-center space-x-2.5 overflow-hidden w-full">
+                        <i data-lucide="message-square-text" class="w-4.5 h-4.5 shrink-0"></i>
+                        <span class="truncate block text-left">${escapeHTML(chat.title)}</span>
+                    </div>
+                    <div class="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2 shrink-0">
+                        <button onclick="openRenameModal(event, '${chat.id}', '${escapeJS(chat.title)}')" class="p-1 text-gray-400 hover:text-gray-900 dark:hover:text-white rounded hover:bg-gray-300 dark:hover:bg-gray-700">
+                            <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+                        </button>
+                        <button onclick="deleteChat(event, '${chat.id}')" class="p-1 text-gray-400 hover:text-red-500 rounded hover:bg-gray-300 dark:hover:bg-gray-700">
+                            <i data-lucide="trash" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                `;
+                
+                listContainer.appendChild(item);
+            });
+
+            lucide.createIcons();
+        }
+
+        // Рендеринг всех сообщений чата
+        function renderCurrentChatMessages() {
+            const activeChat = chats.find(c => c.id === currentChatId);
+            const messagesContainer = document.getElementById('chat-bubbles-list');
+            
+            if (!activeChat) {
+                document.getElementById('current-chat-title').textContent = "Fred Assistant";
+                messagesContainer.innerHTML = '';
+                updateWelcomeStateVisibility();
+                return;
+            }
+
+            document.getElementById('current-chat-title').textContent = activeChat.title;
+            messagesContainer.innerHTML = '';
+
+            const msgs = activeChat.messages || [];
+            
+            if (msgs.length === 0) {
+                updateWelcomeStateVisibility();
+                return;
+            }
+
+            document.getElementById('welcome-container').classList.add('hidden');
+
+            msgs.forEach((msg) => {
+                const isUser = msg.role === 'user';
+                const bubble = document.createElement('div');
+                bubble.className = `flex ${isUser ? 'justify-end' : 'justify-start'} w-full animate-fade-in`;
+                
+                const textHTML = isUser ? escapeHTML(msg.content) : marked.parse(msg.content);
+                const bubbleBg = isUser 
+                    ? 'bg-userbubbleLight dark:bg-userbubble text-gray-900 dark:text-white shadow-sm' 
+                    : 'bg-botbubbleLight dark:bg-botbubble text-gray-800 dark:text-gray-100 border border-gray-200 dark:border-gray-800 shadow-sm';
+                
+                const iconOrAvatar = isUser 
+                    ? `<div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold text-white shrink-0 shadow">U</div>`
+                    : `<div class="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-lg"><i data-lucide="sparkles" class="w-4 h-4"></i></div>`;
+
+                bubble.innerHTML = `
+                    <div class="flex items-start space-x-3 max-w-[85%] sm:max-w-[75%] ${isUser ? 'flex-row-reverse space-x-reverse' : ''}">
+                        ${iconOrAvatar}
+                        <div class="${bubbleBg} rounded-2xl px-4 py-3 text-sm md:text-base leading-relaxed overflow-hidden prose dark:prose-invert">
+                            ${textHTML}
+                        </div>
+                    </div>
+                `;
+                
+                messagesContainer.appendChild(bubble);
+            });
+
+            lucide.createIcons();
+            scrollToBottom();
+            updateWelcomeStateVisibility();
+        }
+
+        // Проверка видимости стартового экрана
+        function updateWelcomeStateVisibility() {
+            const welcome = document.getElementById('welcome-container');
+            const messagesList = document.getElementById('chat-bubbles-list');
+            const activeChat = chats.find(c => c.id === currentChatId);
+
+            if (!activeChat || !activeChat.messages || activeChat.messages.length === 0) {
+                welcome.classList.remove('hidden');
+                messagesList.innerHTML = '';
+            } else {
+                welcome.classList.add('hidden');
+            }
+        }
+
+        // Авто-скролл вниз
+        function scrollToBottom() {
+            const el = document.getElementById('chat-messages');
+            el.scrollTo({
+                top: el.scrollHeight,
+                behavior: 'smooth'
+            });
+        }
+
+        // ---------------- ИНТЕГРАЦИЯ С GROQ API ----------------
+        window.handleSendMessage = async function(e) {
+            e.preventDefault();
+            const inputEl = document.getElementById('user-input');
+            const prompt = inputEl.value.trim();
+            if (!prompt) return;
+
+            // Проверка ключа
+            const apiKey = getApiKey();
+            if (!apiKey) {
+                showToast("Please save your Groq API Key first!", "error");
+                document.getElementById('api-key-input').focus();
+                return;
+            }
+
+            if (!currentChatId) {
+                await createNewChat();
+            }
+
+            const activeChat = chats.find(c => c.id === currentChatId);
+            if (!activeChat) return;
+
+            inputEl.value = '';
+            inputEl.style.height = 'auto';
+            setLoadingUI(true);
+
+            // Создаем массив сообщений локально с учетом контекстной памяти
+            const userMsg = { role: 'user', content: prompt, timestamp: Date.now() };
+            const updatedMessages = [...(activeChat.messages || []), userMsg];
+
+            // Рендерим промежуточное сообщение пользователя для мгновенного отклика
+            renderTemporaryUserMessage(prompt);
+
+            try {
+                let newTitle = activeChat.title;
+                if (activeChat.messages.length === 0) {
+                    newTitle = prompt.length > 25 ? prompt.substring(0, 25) + '...' : prompt;
+                }
+
+                // Запрос к LLaMA 3.3 70B на Groq
+                const assistantReplyText = await sendChatToGroq(updatedMessages, apiKey);
+                const assistantMsg = { role: 'assistant', content: assistantReplyText, timestamp: Date.now() };
+                
+                // Сохранение переписки и контекста в Firestore
+                const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'chats', currentChatId);
+                await updateDoc(docRef, {
+                    title: newTitle,
+                    messages: [...updatedMessages, assistantMsg],
+                    updatedAt: Date.now()
+                });
+
+            } catch (err) {
+                console.error("API Call error:", err);
+                showToast(err.message || "Failed to contact Fred API", "error");
+                renderTemporaryErrorMessage(err.message || "Service currently unavailable.");
+            } finally {
+                setLoadingUI(false);
+            }
+        }
+
+        // Запрос к API с экспоненциальной задержкой в случае перегрузки
+        async function sendChatToGroq(messagesHistory, apiKey) {
+            const formattedMessagesForAPI = [
+                { role: 'system', content: SYSTEM_PROMPT },
+                ...messagesHistory.map(m => ({ role: m.role, content: m.content }))
+            ];
+
+            const endpoint = "https://api.groq.com/openai/v1/chat/completions";
+            const payload = {
+                model: "llama-3.3-70b-versatile",
+                messages: formattedMessagesForAPI,
+                temperature: 0.7,
+                max_tokens: 2048,
+                top_p: 1
+            };
+
+            const maxRetries = 4;
+            let currentDelay = 1000;
+
+            for (let i = 0; i <= maxRetries; i++) {
+                try {
+                    const response = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${apiKey}`
+                        },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        const errorBody = await response.json().catch(() => ({}));
+                        const errMsg = errorBody.error?.message || `HTTP Status ${response.status}`;
+                        throw new Error(errMsg);
+                    }
+
+                    const data = await response.json();
+                    return data.choices?.[0]?.message?.content || "No response received.";
+
+                } catch (error) {
+                    if (i === maxRetries) {
+                        throw error;
+                    }
+                    await new Promise(res => setTimeout(res, currentDelay));
+                    currentDelay *= 2;
+                }
+            }
+        }
+
+        // Временные сообщения на экране
+        function renderTemporaryUserMessage(prompt) {
+            document.getElementById('welcome-container').classList.add('hidden');
+            const messagesContainer = document.getElementById('chat-bubbles-list');
+            
+            const bubble = document.createElement('div');
+            bubble.className = "flex justify-end w-full animate-fade-in";
+            bubble.innerHTML = `
+                <div class="flex items-start space-x-3 max-w-[85%] sm:max-w-[75%] flex-row-reverse space-x-reverse">
+                    <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold text-white shrink-0 shadow">U</div>
+                    <div class="bg-userbubbleLight dark:bg-userbubble text-gray-900 dark:text-white rounded-2xl px-4 py-3 text-sm md:text-base leading-relaxed shadow-sm">
+                        ${escapeHTML(prompt)}
+                    </div>
+                </div>
+            `;
+            messagesContainer.appendChild(bubble);
+            scrollToBottom();
+        }
+
+        function renderTemporaryErrorMessage(msg) {
+            const messagesContainer = document.getElementById('chat-bubbles-list');
+            const bubble = document.createElement('div');
+            bubble.className = "flex justify-start w-full animate-fade-in";
+            bubble.innerHTML = `
+                <div class="flex items-start space-x-3 max-w-[85%] sm:max-w-[75%]">
+                    <div class="w-8 h-8 rounded-full bg-red-600 flex items-center justify-center text-xs font-bold text-white shrink-0 shadow">F</div>
+                    <div class="bg-red-50 dark:bg-red-950/20 text-red-800 dark:text-red-300 border border-red-200 dark:border-red-900/50 rounded-2xl px-4 py-3 text-sm">
+                        <p class="font-bold">An error occurred while speaking to Fred:</p>
+                        <p class="text-xs mt-1">${escapeHTML(msg)}</p>
+                    </div>
+                </div>
+            `;
+            messagesContainer.appendChild(bubble);
+            scrollToBottom();
+        }
+
+        // ---------------- ФУНКЦИИ ХРАНЕНИЯ API КЛЮЧА И НАСТРОЕК ----------------
+        
+        // Исправлено: Экспортируем функцию сохранения ключа напрямую в window
+        window.saveApiKey = function() {
+            const keyInput = document.getElementById('api-key-input');
+            const key = keyInput.value.trim();
+            if (key === '') {
+                localStorage.removeItem('groq_api_key');
+                showToast("API Key removed.", "info");
+                document.getElementById('key-warning').classList.remove('hidden');
+            } else {
+                localStorage.setItem('groq_api_key', key);
+                showToast("API Key saved securely!", "success");
+                document.getElementById('key-warning').classList.add('hidden');
+            }
+        }
+
+        function getApiKey() {
+            return localStorage.getItem('groq_api_key') || "";
+        }
+
+        window.toggleApiKeyVisibility = function() {
+            const field = document.getElementById('api-key-input');
+            const icon = document.getElementById('api-key-visibility-icon');
+            if (field.type === 'password') {
+                field.type = 'text';
+                icon.setAttribute('data-lucide', 'eye-off');
+            } else {
+                field.type = 'password';
+                icon.setAttribute('data-lucide', 'eye');
+            }
+            lucide.createIcons();
+        }
+
+        // ---------------- ПЕРЕКЛЮЧЕНИЕ ТЕМЫ (СВЕТЛАЯ / ТЕМНАЯ) ----------------
+        window.toggleTheme = function() {
+            const html = document.documentElement;
+            const themeBtnIcon = document.getElementById('theme-btn-icon');
+            const themeBtnText = document.getElementById('theme-btn-text');
+
+            if (html.classList.contains('dark')) {
+                // Переключаем на Светлую тему
+                html.classList.remove('dark');
+                localStorage.setItem('fred-theme', 'light');
+                themeBtnIcon.setAttribute('data-lucide', 'sun');
+                themeBtnText.textContent = 'Light';
+            } else {
+                // Переключаем на Темную тему
+                html.classList.add('dark');
+                localStorage.setItem('fred-theme', 'dark');
+                themeBtnIcon.setAttribute('data-lucide', 'moon');
+                themeBtnText.textContent = 'Dark';
+            }
+            lucide.createIcons();
+        }
+
+        // Функция применения сохраненной темы при загрузке страницы
+        function applyInitialTheme() {
+            const savedTheme = localStorage.getItem('fred-theme') || 'dark'; // Темная тема по умолчанию
+            const html = document.documentElement;
+            const themeBtnIcon = document.getElementById('theme-btn-icon');
+            const themeBtnText = document.getElementById('theme-btn-text');
+
+            if (savedTheme === 'dark') {
+                html.classList.add('dark');
+                themeBtnIcon.setAttribute('data-lucide', 'moon');
+                themeBtnText.textContent = 'Dark';
+            } else {
+                html.classList.remove('dark');
+                themeBtnIcon.setAttribute('data-lucide', 'sun');
+                themeBtnText.textContent = 'Light';
+            }
+            lucide.createIcons();
+        }
+
+        // ---------------- ДРУГИЕ UI ФУНКЦИИ ----------------
+        function setLoadingUI(isLoading) {
+            const sendBtn = document.getElementById('send-btn');
+            const inputField = document.getElementById('user-input');
+            const indicator = document.getElementById('ai-writing-indicator');
+
+            if (isLoading) {
+                sendBtn.disabled = true;
+                sendBtn.classList.add('opacity-55');
+                inputField.disabled = true;
+                indicator.classList.remove('hidden');
+            } else {
+                sendBtn.disabled = false;
+                sendBtn.classList.remove('opacity-55');
+                inputField.disabled = false;
+                indicator.classList.add('hidden');
+                inputField.focus();
+            }
+        }
+
+        window.showToast = function(message, type = "info") {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toast-message');
+            const iconContainer = document.getElementById('toast-icon-container');
+            const icon = document.getElementById('toast-icon');
+
+            toastMsg.textContent = message;
+            if (type === "success") {
+                iconContainer.className = "p-1 rounded-lg bg-green-100 dark:bg-green-950 text-green-600 dark:text-green-400";
+                icon.setAttribute('data-lucide', 'check-circle');
+            } else if (type === "error") {
+                iconContainer.className = "p-1 rounded-lg bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400";
+                icon.setAttribute('data-lucide', 'alert-circle');
+            } else {
+                iconContainer.className = "p-1 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400";
+                icon.setAttribute('data-lucide', 'info');
+            }
+
+            lucide.createIcons();
+
+            toast.classList.remove('translate-y-[-100px]', 'opacity-0');
+            toast.classList.add('translate-y-0', 'opacity-100');
+            
+            setTimeout(() => {
+                toast.classList.remove('translate-y-0', 'opacity-100');
+                toast.classList.add('translate-y-[-100px]', 'opacity-0');
+            }, 3500);
+        }
+
+        function escapeHTML(str) {
+            return str.replace(/[&<>'"]/g, 
+                tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+            );
+        }
+
+        function escapeJS(str) {
+            return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+        }
+
+        window.autoResizeTextarea = function(el) {
+            el.style.height = 'auto';
+            el.style.height = (el.scrollHeight) + 'px';
+        }
+
+        window.submitOnEnter = function(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                document.getElementById('chat-form').requestSubmit();
+            }
+        }
+
+        window.toggleSidebar = function() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+            sidebar.classList.toggle('-translate-x-full');
+            overlay.classList.toggle('hidden');
+        }
+
+        window.fillPrompt = function(text) {
+            const input = document.getElementById('user-input');
+            input.value = text;
+            autoResizeTextarea(input);
+            input.focus();
+        }
+
+        window.openRenameModal = function(e, chatId, currentTitle) {
+            e.stopPropagation();
+            currentRenameId = chatId;
+            document.getElementById('rename-input').value = currentTitle;
+            document.getElementById('rename-modal').classList.remove('hidden');
+            document.getElementById('rename-input').focus();
+        }
+
+        window.closeRenameModal = function() {
+            document.getElementById('rename-modal').classList.add('hidden');
+            currentRenameId = null;
+        }
+
+        window.submitRenameChat = async function() {
+            const val = document.getElementById('rename-input').value.trim();
+            if (val && currentRenameId) {
+                await updateChatTitle(currentRenameId, val);
+                closeRenameModal();
+            }
+        }
+
+        // Запуск при первоначальной отрисовке страницы
+        window.addEventListener('DOMContentLoaded', () => {
+            applyInitialTheme();
+            const savedKey = getApiKey();
+            if (savedKey) {
+                document.getElementById('api-key-input').value = savedKey;
+                document.getElementById('key-warning').classList.add('hidden');
+            } else {
+                document.getElementById('key-warning').classList.remove('hidden');
+            }
+            lucide.createIcons();
+        });
+
+    </script>
+</body>
+</html>
+
+```
